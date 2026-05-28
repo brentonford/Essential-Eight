@@ -1,0 +1,110 @@
+$hostname   = $env:COMPUTERNAME
+$reportDate = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+
+# --- ISM-1654: IE11 ---
+$iePolicyPath = "HKLM:\SOFTWARE\Policies\Microsoft\Internet Explorer\Main"
+$iePolicy     = (Get-ItemProperty -Path $iePolicyPath -Name "DisableInternetExplorer" -ErrorAction SilentlyContinue).DisableInternetExplorer
+$ieFeature    = Get-WindowsOptionalFeature -Online -FeatureName "Internet-Explorer-Optional-amd64" -ErrorAction SilentlyContinue
+$ieEnabled    = $null -ne $ieFeature -and $ieFeature.State -eq "Enabled"
+$ism1654      = if ($iePolicy -eq 1 -or -not $ieEnabled) { "PASS" } else { "FAIL" }
+
+# --- ISM-1486: Java ---
+$jrePresent = $false
+foreach ($p in @("HKLM:\SOFTWARE\JavaSoft\Java Runtime Environment","HKLM:\SOFTWARE\Wow6432Node\JavaSoft\Java Runtime Environment")) {
+    if (Test-Path $p) { $jrePresent = $true }
+}
+$ism1486 = if ($ism1654 -eq "PASS" -and -not $ieEnabled) { "PASS" } else { "REVIEW" }
+
+# --- ISM-1485 / ISM-1585: Edge ---
+$edgePath   = "HKLM:\SOFTWARE\Policies\Microsoft\Edge"
+$edgeSS     = (Get-ItemProperty -Path $edgePath -Name "SmartScreenEnabled" -ErrorAction SilentlyContinue).SmartScreenEnabled
+$edgePrevent= (Get-ItemProperty -Path $edgePath -Name "PreventSmartScreenPromptOverride" -ErrorAction SilentlyContinue).PreventSmartScreenPromptOverride
+$edgeAds    = (Get-ItemProperty -Path $edgePath -Name "AdsSettingForIntrusiveAdsSites" -ErrorAction SilentlyContinue).AdsSettingForIntrusiveAdsSites
+$ism1485Edge = if ($edgeSS -eq 1 -and $edgeAds -eq 2) { "PARTIAL" } else { "FAIL" }
+$ism1585Edge = if ($edgeSS -eq 1 -and $edgePrevent -eq 1) { "PASS" } else { "FAIL" }
+
+# --- Chrome ---
+$chromeInstalled = @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe","${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe") |
+    Where-Object { Test-Path $_ }
+$chromePath     = "HKLM:\SOFTWARE\Policies\Google\Chrome"
+$chromeSB       = (Get-ItemProperty -Path $chromePath -Name "SafeBrowsingEnabled" -ErrorAction SilentlyContinue).SafeBrowsingEnabled
+$chromeAds      = (Get-ItemProperty -Path $chromePath -Name "AdsSettingForIntrusiveAdsSites" -ErrorAction SilentlyContinue).AdsSettingForIntrusiveAdsSites
+$chromeStatus   = if (-not $chromeInstalled) { "NOT APPLICABLE" } elseif ($chromeSB -eq 1 -and $chromeAds -eq 2) { "PARTIAL" } else { "FAIL" }
+
+# --- Firefox ---
+$firefoxInstalled = @("$env:ProgramFiles\Mozilla Firefox\firefox.exe","${env:ProgramFiles(x86)}\Mozilla Firefox\firefox.exe") |
+    Where-Object { Test-Path $_ }
+$firefoxPath    = "HKLM:\SOFTWARE\Policies\Mozilla\Firefox"
+$ffTracking     = (Get-ItemProperty -Path $firefoxPath -Name "EnableTrackingProtection" -ErrorAction SilentlyContinue).EnableTrackingProtection
+$ffLocked       = (Get-ItemProperty -Path "$firefoxPath\EnableTrackingProtection" -Name "Locked" -ErrorAction SilentlyContinue).Locked
+$firefoxStatus  = if (-not $firefoxInstalled) { "NOT APPLICABLE" } elseif ($ffTracking -eq 1 -and $ffLocked -eq 1) { "PASS" } else { "FAIL" }
+
+# --- Overall ---
+$allStatuses    = @($ism1654, $ism1486, $ism1485Edge, $ism1585Edge, $chromeStatus, $firefoxStatus) |
+    Where-Object { $_ -ne "NOT APPLICABLE" }
+$overallStatus  = if ($allStatuses -contains "FAIL") { "NON-COMPLIANT" } elseif ($allStatuses -contains "PARTIAL") { "PARTIAL COMPLIANCE" } else { "COMPLIANT" }
+
+$separator = "=" * 60
+
+Write-Output $separator
+Write-Output "  ESSENTIAL EIGHT ML1 — USER APPLICATION HARDENING"
+Write-Output "  ASD Control: Mitigation Strategy 4"
+Write-Output "  ISM Controls: 1654, 1486, 1485, 1585"
+Write-Output "  Reference  : cyber.gov.au/essential-eight"
+Write-Output $separator
+Write-Output "  Server     : $hostname"
+Write-Output "  Report Date: $reportDate"
+Write-Output "  Generated  : AttuneOps"
+Write-Output $separator
+Write-Output ""
+Write-Output "  CHECKS"
+Write-Output ""
+Write-Output "  [ISM-1654] Internet Explorer 11 Disabled"
+Write-Output "    IE Feature state  : $(if ($null -ne $ieFeature) { $ieFeature.State } else { 'Not present' })"
+Write-Output "    Policy key value  : $iePolicy"
+Write-Output "    Result            : $ism1654"
+Write-Output ""
+Write-Output "  [ISM-1486] Java Browser Plugin"
+Write-Output "    Java JRE installed: $jrePresent"
+Write-Output "    NPAPI browsers    : $(if ($ieEnabled) { 'IE11 ACTIVE — FAIL' } else { 'None active' })"
+Write-Output "    Result            : $ism1486"
+Write-Output ""
+Write-Output "  [ISM-1485] No Web Advertisements — Edge"
+Write-Output "    SmartScreenEnabled              : $edgeSS"
+Write-Output "    AdsSettingForIntrusiveAdsSites  : $edgeAds"
+Write-Output "    Result                          : $ism1485Edge"
+Write-Output "    NOTE: PARTIAL = registry controls in place."
+Write-Output "    Full compliance requires browser extension or network filtering."
+Write-Output ""
+Write-Output "  [ISM-1585] Browser Security Settings Locked — Edge"
+Write-Output "    SmartScreen policy-enforced         : $(if ($edgeSS -eq 1) { 'Yes' } else { 'No' })"
+Write-Output "    PreventSmartScreenPromptOverride    : $edgePrevent"
+Write-Output "    Result                              : $ism1585Edge"
+Write-Output ""
+Write-Output "  [ALL ISM] Chrome"
+Write-Output "    Installed : $(if ($chromeInstalled) { 'Yes' } else { 'No' })"
+Write-Output "    Result    : $chromeStatus"
+Write-Output ""
+Write-Output "  [ALL ISM] Firefox"
+Write-Output "    Installed : $(if ($firefoxInstalled) { 'Yes' } else { 'No' })"
+Write-Output "    Result    : $firefoxStatus"
+Write-Output ""
+Write-Output $separator
+Write-Output "  OVERALL STATUS : $overallStatus"
+Write-Output $separator
+
+if ($overallStatus -in @("NON-COMPLIANT", "PARTIAL COMPLIANCE")) {
+    Write-Output ""
+    Write-Output "  REMEDIATION ACTIONS:"
+    if ($ism1654 -ne "PASS") {
+        Write-Output "  - Run Configure User Application Hardening Blueprint to disable IE11"
+    }
+    if ($ism1485Edge -eq "PARTIAL") {
+        Write-Output "  - Deploy uBlock Origin via Edge ExtensionInstallForcelist policy, or"
+        Write-Output "    implement DNS/proxy-level ad and content filtering for full ISM-1485 coverage"
+    }
+    if ($ism1585Edge -ne "PASS") {
+        Write-Output "  - Run Configure Blueprint to apply Edge policy settings"
+        exit 1
+    }
+}

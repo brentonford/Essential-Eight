@@ -1,0 +1,49 @@
+# ISM-1485: Web browsers do not process web advertisements from the internet.
+# ISM-1486: Web browsers do not process Java from the internet.
+# ISM-1585: Web browser security settings cannot be changed by users.
+#
+# Edge policies are written to HKLM:\SOFTWARE\Policies\Microsoft\Edge
+# Values in this path are policy-enforced — standard users cannot override them.
+# Java via NPAPI is not supported in Chromium-based Edge. ISM-1486 is met
+# by the absence of NPAPI support and the disabling of IE11.
+#
+# ISM-1485 partial coverage note:
+# AdsSettingForIntrusiveAdsSites blocks ads on sites violating the Better Ads
+# Standards (intrusive interstitials, auto-play video with sound, etc).
+# SmartScreen blocks malicious ad networks and drive-by download vectors.
+# Full ad blocking across all sites requires a browser extension or network control.
+
+$edgePath = "HKLM:\SOFTWARE\Policies\Microsoft\Edge"
+if (-not (Test-Path $edgePath)) {
+    New-Item -Path $edgePath -Force | Out-Null
+}
+
+$edgeSettings = @{
+    # SmartScreen — blocks malicious sites, phishing, malicious downloads
+    SmartScreenEnabled                            = 1
+    # PUA protection via SmartScreen
+    SmartScreenPuaEnabled                         = 1
+    # Prevent users from bypassing SmartScreen warnings for sites
+    PreventSmartScreenPromptOverride              = 1
+    # Prevent users from bypassing SmartScreen warnings for downloads
+    PreventSmartScreenPromptOverrideForFiles      = 1
+    # Block ads on sites with intrusive advertising (ISM-1485 partial)
+    AdsSettingForIntrusiveAdsSites                = 2
+    # Disable IE11 integration (belt and braces with Step 1)
+    InternetExplorerIntegrationLevel              = 0
+    # Enforce HTTPS where possible
+    AutomaticHttpsDefault                         = 2
+    # Disable saving of browser passwords (reduces credential exposure on servers)
+    PasswordManagerEnabled                        = 0
+    # Block third-party cookies
+    BlockThirdPartyCookies                        = 1
+}
+
+foreach ($setting in $edgeSettings.GetEnumerator()) {
+    Set-ItemProperty -Path $edgePath -Name $setting.Key -Value $setting.Value -Type DWord
+    Write-Output "Edge policy set: $($setting.Key) = $($setting.Value)"
+}
+
+Write-Output ""
+Write-Output "Edge security policies applied."
+Write-Output "NOTE ISM-1485: Full ad blocking requires a browser extension (e.g. uBlock Origin via policy) or network-level DNS/proxy filtering in addition to these settings."

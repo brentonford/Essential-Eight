@@ -1,0 +1,50 @@
+# ISM-1485, ISM-1486, ISM-1585 — Google Chrome
+# Chrome policies live at HKLM:\SOFTWARE\Policies\Google\Chrome
+# Exits cleanly with documented skip if Chrome is not installed.
+# Java NPAPI is not supported in Chrome 45+.
+
+$chromeExe = @(
+    "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
+    "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe"
+)
+
+$chromeInstalled = $chromeExe | Where-Object { Test-Path $_ }
+
+if (-not $chromeInstalled) {
+    Write-Output "Google Chrome not detected on this server."
+    Write-Output "Chrome policy configuration skipped — not applicable."
+    exit 0
+}
+
+Write-Output "Chrome detected. Applying security policies..."
+
+$chromePath = "HKLM:\SOFTWARE\Policies\Google\Chrome"
+if (-not (Test-Path $chromePath)) {
+    New-Item -Path $chromePath -Force | Out-Null
+}
+
+$chromeSettings = @{
+    # Safe Browsing — blocks phishing, malicious downloads, malicious ad networks
+    SafeBrowsingEnabled                           = 1
+    # Enhanced Safe Browsing
+    SafeBrowsingProtectionLevel                   = 2
+    # Block ads on sites with intrusive advertising (ISM-1485 partial)
+    AdsSettingForIntrusiveAdsSites                = 2
+    # Prevent Safe Browsing bypass for sites
+    SafeBrowsingAllowlistDomains                  = 0
+    # Block third-party cookies
+    BlockThirdPartyCookies                        = 1
+    # Disable password manager on server
+    PasswordManagerEnabled                        = 0
+    # Prevent browser sign-in (reduces data exfiltration risk)
+    BrowserSignin                                 = 0
+}
+
+foreach ($setting in $chromeSettings.GetEnumerator()) {
+    Set-ItemProperty -Path $chromePath -Name $setting.Key -Value $setting.Value -Type DWord
+    Write-Output "Chrome policy set: $($setting.Key) = $($setting.Value)"
+}
+
+Write-Output ""
+Write-Output "Chrome security policies applied."
+Write-Output "NOTE ISM-1485: Full ad blocking requires uBlock Origin deployed via Chrome ExtensionInstallForcelist policy or network-level filtering."

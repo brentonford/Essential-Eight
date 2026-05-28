@@ -1,0 +1,45 @@
+# ISM-1485, ISM-1486, ISM-1585 — Microsoft Edge
+
+$edgePath    = "HKLM:\SOFTWARE\Policies\Microsoft\Edge"
+$edgePresent = Test-Path $edgePath
+
+if (-not $edgePresent) {
+    Write-Output "CHECK Edge Policies : FAIL — no Edge policy path found at HKLM:\SOFTWARE\Policies\Microsoft\Edge"
+    exit 1
+}
+
+$requiredSettings = @{
+    SmartScreenEnabled                       = @{ Required = 1;  ISM = "1585/1485" }
+    SmartScreenPuaEnabled                    = @{ Required = 1;  ISM = "1485" }
+    PreventSmartScreenPromptOverride         = @{ Required = 1;  ISM = "1585" }
+    PreventSmartScreenPromptOverrideForFiles = @{ Required = 1;  ISM = "1585" }
+    AdsSettingForIntrusiveAdsSites           = @{ Required = 2;  ISM = "1485 (partial)" }
+    InternetExplorerIntegrationLevel         = @{ Required = 0;  ISM = "1654" }
+}
+
+$failCount = 0
+
+foreach ($setting in $requiredSettings.GetEnumerator()) {
+    $currentValue = (Get-ItemProperty -Path $edgePath -Name $setting.Key -ErrorAction SilentlyContinue).($setting.Key)
+    $required     = $setting.Value.Required
+    $ism          = $setting.Value.ISM
+
+    if ($currentValue -ne $required) {
+        Write-Output "FAIL  Edge $($setting.Key) : value '$currentValue' (required: $required) [ISM-$ism]"
+        $failCount++
+        continue
+    }
+    Write-Output "PASS  Edge $($setting.Key) = $currentValue [ISM-$ism]"
+}
+
+Write-Output ""
+if ($failCount -eq 0) {
+    Write-Output "CHECK Edge Policies : PASS"
+} else {
+    Write-Output "CHECK Edge Policies : FAIL — $failCount setting(s) non-compliant"
+    exit 1
+}
+
+Write-Output ""
+Write-Output "NOTE ISM-1485 PARTIAL: AdsSettingForIntrusiveAdsSites covers intrusive ad sites only."
+Write-Output "Full ISM-1485 compliance requires a browser extension policy or network-level filtering."

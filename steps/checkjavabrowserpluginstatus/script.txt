@@ -1,0 +1,57 @@
+# ISM-1486: Web browsers do not process Java from the internet.
+# Java browser plugin (NPAPI) is not supported in Edge (Chromium), Chrome 45+,
+# or Firefox 52+. This check confirms:
+# 1. No NPAPI-capable browser is enabled (IE11 should be disabled per ISM-1654)
+# 2. Java JRE deployment config (if JRE is installed) does not re-enable browser plugin
+
+$jreInstalled = $false
+$registryPaths = @(
+    "HKLM:\SOFTWARE\JavaSoft\Java Runtime Environment",
+    "HKLM:\SOFTWARE\Wow6432Node\JavaSoft\Java Runtime Environment"
+)
+
+foreach ($path in $registryPaths) {
+    if (Test-Path $path) {
+        $jreVersion = (Get-ItemProperty -Path $path -Name "CurrentVersion" -ErrorAction SilentlyContinue).CurrentVersion
+        if ($jreVersion) {
+            Write-Output "Java JRE detected: version $jreVersion"
+            $jreInstalled = $true
+        }
+    }
+}
+
+if (-not $jreInstalled) {
+    Write-Output "Java JRE: not installed"
+}
+
+# Check for Java deployment configuration that could enable browser plugin
+$javaDeploymentConfig = "$env:USERPROFILE\AppData\LocalLow\Sun\Java\Deployment\deployment.properties"
+$systemDeploymentConfig = "$env:WINDIR\Sun\Java\Deployment\deployment.properties"
+
+$browserPluginEnabled = $false
+foreach ($configPath in @($javaDeploymentConfig, $systemDeploymentConfig)) {
+    if (-not (Test-Path $configPath)) {
+        continue
+    }
+    $content = Get-Content $configPath -ErrorAction SilentlyContinue
+    $pluginLine = $content | Where-Object { $_ -match "deployment.webjava.enabled" }
+    if ($pluginLine -match "true") {
+        Write-Output "WARN Java deployment config enables web plugin: $configPath"
+        $browserPluginEnabled = $true
+    }
+}
+
+# Verify no NPAPI-capable browsers are active
+$ieFeature  = Get-WindowsOptionalFeature -Online -FeatureName "Internet-Explorer-Optional-amd64" -ErrorAction SilentlyContinue
+$ieEnabled  = $null -ne $ieFeature -and $ieFeature.State -eq "Enabled"
+
+Write-Output ""
+Write-Output "IE11 active (NPAPI-capable)    : $ieEnabled"
+Write-Output "Java browser plugin config     : $(if ($browserPluginEnabled) { 'ENABLED — remediate' } else { 'Not enabled' })"
+
+if (-not $ieEnabled -and -not $browserPluginEnabled) {
+    Write-Output "CHECK ISM-1486 Java : PASS — no NPAPI-capable browser active, Java plugin not enabled"
+} else {
+    Write-Output "CHECK ISM-1486 Java : FAIL"
+    exit 1
+}

@@ -1,0 +1,59 @@
+# ISM-1485, ISM-1486, ISM-1585 — Mozilla Firefox
+# Firefox supports Windows registry policies from Firefox 60+.
+# Registry path: HKLM:\SOFTWARE\Policies\Mozilla\Firefox
+# Java NPAPI is not supported in Firefox 52+.
+# Exits cleanly with documented skip if Firefox is not installed.
+
+$firefoxExe = @(
+    "$env:ProgramFiles\Mozilla Firefox\firefox.exe",
+    "${env:ProgramFiles(x86)}\Mozilla Firefox\firefox.exe"
+)
+
+$firefoxInstalled = $firefoxExe | Where-Object { Test-Path $_ }
+
+if (-not $firefoxInstalled) {
+    Write-Output "Mozilla Firefox not detected on this server."
+    Write-Output "Firefox policy configuration skipped — not applicable."
+    exit 0
+}
+
+Write-Output "Firefox detected. Applying security policies..."
+
+$firefoxPath = "HKLM:\SOFTWARE\Policies\Mozilla\Firefox"
+if (-not (Test-Path $firefoxPath)) {
+    New-Item -Path $firefoxPath -Force | Out-Null
+}
+
+# Enable Enhanced Tracking Protection (blocks trackers, cryptominers, fingerprinters)
+Set-ItemProperty -Path $firefoxPath -Name "EnableTrackingProtection" -Value 1 -Type DWord
+Write-Output "Firefox policy set: EnableTrackingProtection = 1"
+
+# Disable telemetry
+Set-ItemProperty -Path $firefoxPath -Name "DisableTelemetry" -Value 1 -Type DWord
+Write-Output "Firefox policy set: DisableTelemetry = 1"
+
+# Disable password manager
+Set-ItemProperty -Path $firefoxPath -Name "OfferToSaveLogins" -Value 0 -Type DWord
+Write-Output "Firefox policy set: OfferToSaveLogins = 0"
+
+# Disable Firefox Accounts / Sync (server hardening)
+Set-ItemProperty -Path $firefoxPath -Name "DisableFirefoxAccounts" -Value 1 -Type DWord
+Write-Output "Firefox policy set: DisableFirefoxAccounts = 1"
+
+# Prevent users from disabling tracking protection (ISM-1585)
+# This is enforced by writing to the HKLM policy path, which users cannot modify.
+
+$firefoxTrackingPath = "$firefoxPath\EnableTrackingProtection"
+if (-not (Test-Path $firefoxTrackingPath)) {
+    New-Item -Path $firefoxTrackingPath -Force | Out-Null
+}
+
+Set-ItemProperty -Path $firefoxTrackingPath -Name "Value" -Value 1 -Type DWord
+Set-ItemProperty -Path $firefoxTrackingPath -Name "Locked" -Value 1 -Type DWord
+Set-ItemProperty -Path $firefoxTrackingPath -Name "Cryptomining" -Value 1 -Type DWord
+Set-ItemProperty -Path $firefoxTrackingPath -Name "Fingerprinting" -Value 1 -Type DWord
+Write-Output "Firefox policy set: Tracking protection locked and cryptomining/fingerprinting blocked."
+
+Write-Output ""
+Write-Output "Firefox security policies applied."
+Write-Output "NOTE ISM-1485: Full ad blocking in Firefox requires uBlock Origin deployed via the ExtensionSettings policy in policies.json."

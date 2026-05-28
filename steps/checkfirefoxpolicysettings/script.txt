@@ -1,0 +1,57 @@
+# ISM-1485, ISM-1486, ISM-1585 — Mozilla Firefox
+# Exits with documented skip if Firefox is not installed.
+
+$firefoxExe = @(
+    "$env:ProgramFiles\Mozilla Firefox\firefox.exe",
+    "${env:ProgramFiles(x86)}\Mozilla Firefox\firefox.exe"
+)
+
+$firefoxInstalled = $firefoxExe | Where-Object { Test-Path $_ }
+
+if (-not $firefoxInstalled) {
+    Write-Output "CHECK Firefox Policies : NOT APPLICABLE — Firefox not installed"
+    exit 0
+}
+
+$firefoxPath    = "HKLM:\SOFTWARE\Policies\Mozilla\Firefox"
+$firefoxPresent = Test-Path $firefoxPath
+
+if (-not $firefoxPresent) {
+    Write-Output "CHECK Firefox Policies : FAIL — Firefox installed but no policy path found"
+    exit 1
+}
+
+$trackingPath    = "$firefoxPath\EnableTrackingProtection"
+$trackingPresent = Test-Path $trackingPath
+
+$trackingValue = (Get-ItemProperty -Path $firefoxPath -Name "EnableTrackingProtection" -ErrorAction SilentlyContinue).EnableTrackingProtection
+$lockedValue   = if ($trackingPresent) {
+    (Get-ItemProperty -Path $trackingPath -Name "Locked" -ErrorAction SilentlyContinue).Locked
+} else { $null }
+
+Write-Output "Firefox EnableTrackingProtection : $trackingValue"
+Write-Output "Firefox Tracking protection Locked: $lockedValue"
+
+$failCount = 0
+
+if ($trackingValue -ne 1) {
+    Write-Output "FAIL  Firefox EnableTrackingProtection not set to 1 [ISM-1485]"
+    $failCount++
+} else {
+    Write-Output "PASS  Firefox EnableTrackingProtection = 1 [ISM-1485]"
+}
+
+if ($lockedValue -ne 1) {
+    Write-Output "FAIL  Firefox tracking protection not locked — users can disable it [ISM-1585]"
+    $failCount++
+} else {
+    Write-Output "PASS  Firefox tracking protection is locked [ISM-1585]"
+}
+
+Write-Output ""
+if ($failCount -eq 0) {
+    Write-Output "CHECK Firefox Policies : PASS"
+} else {
+    Write-Output "CHECK Firefox Policies : FAIL — $failCount setting(s) non-compliant"
+    exit 1
+}

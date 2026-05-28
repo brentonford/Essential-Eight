@@ -1,0 +1,32 @@
+# ISM-1654: Internet Explorer 11 is disabled or removed.
+
+$featureName   = "Internet-Explorer-Optional-amd64"
+$feature       = Get-WindowsOptionalFeature -Online -FeatureName $featureName -ErrorAction SilentlyContinue
+$featureState  = if ($null -ne $feature) { $feature.State } else { "NotPresent" }
+
+$iePolicyPath  = "HKLM:\SOFTWARE\Policies\Microsoft\Internet Explorer\Main"
+$policyKeyExists = Test-Path $iePolicyPath
+$policyValue   = if ($policyKeyExists) {
+    (Get-ItemProperty -Path $iePolicyPath -Name "DisableInternetExplorer" -ErrorAction SilentlyContinue).DisableInternetExplorer
+} else { $null }
+
+$edgePath      = "HKLM:\SOFTWARE\Policies\Microsoft\Edge"
+$ieModeValue   = (Get-ItemProperty -Path $edgePath -Name "InternetExplorerIntegrationLevel" -ErrorAction SilentlyContinue).InternetExplorerIntegrationLevel
+
+Write-Output "IE11 Optional Feature state   : $featureState"
+Write-Output "IE11 policy key present       : $policyKeyExists"
+Write-Output "DisableInternetExplorer value : $policyValue"
+Write-Output "Edge IE Mode integration      : $ieModeValue"
+
+$featureDisabled = $featureState -in @("Disabled", "NotPresent")
+$policyDisabled  = $policyValue -eq 1
+$ieModeDisabled  = $ieModeValue -eq 0
+
+if ($featureDisabled -and $policyDisabled) {
+    Write-Output "CHECK ISM-1654 IE11 : PASS"
+} elseif ($policyDisabled) {
+    Write-Output "CHECK ISM-1654 IE11 : PASS (policy key set; feature state: $featureState)"
+} else {
+    Write-Output "CHECK ISM-1654 IE11 : FAIL — IE11 is not fully disabled"
+    exit 1
+}

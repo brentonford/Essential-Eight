@@ -1,0 +1,51 @@
+# ISM-1485, ISM-1486, ISM-1585 — Google Chrome
+# Exits with documented skip if Chrome is not installed.
+
+$chromeExe = @(
+    "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
+    "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe"
+)
+
+$chromeInstalled = $chromeExe | Where-Object { Test-Path $_ }
+
+if (-not $chromeInstalled) {
+    Write-Output "CHECK Chrome Policies : NOT APPLICABLE — Chrome not installed"
+    exit 0
+}
+
+$chromePath    = "HKLM:\SOFTWARE\Policies\Google\Chrome"
+$chromePresent = Test-Path $chromePath
+
+if (-not $chromePresent) {
+    Write-Output "CHECK Chrome Policies : FAIL — Chrome installed but no policy path found"
+    exit 1
+}
+
+$requiredSettings = @{
+    SafeBrowsingEnabled              = @{ Required = 1; ISM = "1485/1585" }
+    SafeBrowsingProtectionLevel      = @{ Required = 2; ISM = "1485" }
+    AdsSettingForIntrusiveAdsSites   = @{ Required = 2; ISM = "1485 (partial)" }
+}
+
+$failCount = 0
+
+foreach ($setting in $requiredSettings.GetEnumerator()) {
+    $currentValue = (Get-ItemProperty -Path $chromePath -Name $setting.Key -ErrorAction SilentlyContinue).($setting.Key)
+    $required     = $setting.Value.Required
+    $ism          = $setting.Value.ISM
+
+    if ($currentValue -ne $required) {
+        Write-Output "FAIL  Chrome $($setting.Key) : value '$currentValue' (required: $required) [ISM-$ism]"
+        $failCount++
+        continue
+    }
+    Write-Output "PASS  Chrome $($setting.Key) = $currentValue [ISM-$ism]"
+}
+
+Write-Output ""
+if ($failCount -eq 0) {
+    Write-Output "CHECK Chrome Policies : PASS"
+} else {
+    Write-Output "CHECK Chrome Policies : FAIL — $failCount setting(s) non-compliant"
+    exit 1
+}

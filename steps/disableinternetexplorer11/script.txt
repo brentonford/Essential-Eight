@@ -1,0 +1,39 @@
+# ISM-1654: Internet Explorer 11 is disabled or removed.
+# IE11 reached end of life June 2022. It supports NPAPI plugins (including Java),
+# has known unpatched CVEs, and must not be active on any ML1-compliant system.
+#
+# Method 1: Remove the Windows Optional Feature.
+# Method 2: Set the policy registry key (works on SKUs where Feature removal is unavailable
+# and survives Feature reinstallation attempts).
+# Both methods are applied. The policy key is the primary assessable control.
+
+$featureName = "Internet-Explorer-Optional-amd64"
+$feature = Get-WindowsOptionalFeature -Online -FeatureName $featureName -ErrorAction SilentlyContinue
+
+if ($null -ne $feature -and $feature.State -eq "Enabled") {
+    Write-Output "IE11 Optional Feature is enabled. Disabling..."
+    Disable-WindowsOptionalFeature -Online -FeatureName $featureName -NoRestart | Out-Null
+    Write-Output "IE11 Optional Feature disabled."
+} else {
+    Write-Output "IE11 Optional Feature is not enabled or not present."
+}
+
+$iePolicyPath = "HKLM:\SOFTWARE\Policies\Microsoft\Internet Explorer\Main"
+if (-not (Test-Path $iePolicyPath)) {
+    New-Item -Path $iePolicyPath -Force | Out-Null
+}
+
+Set-ItemProperty -Path $iePolicyPath -Name "DisableInternetExplorer" -Value 1 -Type DWord
+Write-Output "IE11 policy key set: DisableInternetExplorer = 1"
+
+# Disable IE11 integration with Edge (IE Mode)
+$edgeIePath = "HKLM:\SOFTWARE\Policies\Microsoft\Edge"
+if (-not (Test-Path $edgeIePath)) {
+    New-Item -Path $edgeIePath -Force | Out-Null
+}
+
+Set-ItemProperty -Path $edgeIePath -Name "InternetExplorerIntegrationLevel" -Value 0 -Type DWord
+Write-Output "Edge IE Mode integration disabled: InternetExplorerIntegrationLevel = 0"
+
+Write-Output ""
+Write-Output "ISM-1654: Internet Explorer 11 disable controls applied."
